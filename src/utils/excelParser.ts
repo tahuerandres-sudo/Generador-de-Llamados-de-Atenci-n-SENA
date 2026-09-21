@@ -35,25 +35,124 @@ export interface ParsedExcelResult {
     evidenceId: string;
     evidenceNumero: number;
     evidenceNombre: string;
+    isNew?: boolean;
   }[];
+  allEvidences: EvidenceItem[];
   unmappedEvidenceColumns: string[];
   summary: {
     totalApprentices: number;
     matchedWithExisting: number;
     newApprentices: number;
     evidencesUpdated: number;
+    newEvidencesCreated: number;
   };
 }
 
 /**
  * Normalizes text for comparison (removes accents, extra spaces, lowercase)
  */
-function normalizeText(text: string): string {
+export function normalizeText(text: string): string {
   return (text || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+/**
+ * Extracts a numeric index for an evidence from header text (e.g., "#9 - ...", "Evidencia 9", "EV09", "9")
+ * Supports from 1 up to 50 evidences (well covering the requested 30 evidences).
+ */
+export function extractEvidenceNumberFromHeader(headerStr: string): number | null {
+  const clean = headerStr.trim();
+
+  // 1. Exact number: "9", "12", "30"
+  if (/^\d{1,2}$/.test(clean)) {
+    const n = parseInt(clean, 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  // 2. Leading number with separator or hash: "#9 - ...", "9 - ...", "9. ...", "9) ...", "#9"
+  const leadMatch = clean.match(/^(?:#|\b)?\s*(\d{1,2})\s*[-.:\)]/i) || clean.match(/^#\s*(\d{1,2})\b/i);
+  if (leadMatch) {
+    const n = parseInt(leadMatch[1], 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  // 3. Keyword followed by number: "Evidencia 9", "Evid 9", "EV 9", "EV09", "E9", "Actividad 9", "AA9", "Evidencia #9"
+  const kwMatch = clean.match(/(?:evidencia|evid|ev|actividad|aa|e|rap)\s*#?\s*0*(\d{1,2})\b/i);
+  if (kwMatch) {
+    const n = parseInt(kwMatch[1], 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  // 4. Embedded EV pattern, e.g. "AA2-EV09", "GA1-EV9", "EV09"
+  const embMatch = clean.match(/ev0*(\d{1,2})\b/i);
+  if (embMatch) {
+    const n = parseInt(embMatch[1], 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  // 5. Hash symbol followed by number anywhere: "Taller #9"
+  const hashMatch = clean.match(/#\s*0*(\d{1,2})\b/);
+  if (hashMatch) {
+    const n = parseInt(hashMatch[1], 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  return null;
+}
+
+/**
+ * Cleans the column header to produce a readable SENA evidence description
+ */
+export function cleanEvidenceNameFromHeader(headerStr: string, evNum: number): string {
+  let clean = headerStr.trim();
+
+  // Remove leading '#9 - ' or '9 - ' or '9. ' or '9) '
+  clean = clean.replace(/^(?:#|\b)?\s*0*\d{1,2}\s*[-.:\)]\s*/, '').trim();
+
+  // Remove leading 'Evidencia 9: ' or 'Evidencia 9 - ' or 'Evidencia #9 - '
+  clean = clean.replace(/^(?:evidencia|evid|ev)\s*#?\s*0*\d{1,2}\s*[-.:\)]?\s*/i, '').trim();
+
+  if (!clean || clean.length < 3) {
+    return `Evidencia GA2-240202501-AA2-EV0${evNum}. Actividad de aprendizaje`;
+  }
+  return clean;
+}
+
+/**
+ * Checks if a sample cell contains a recognizable qualification status
+ */
+export function isCellEvidenceStatus(val: any): boolean {
+  if (val === undefined || val === null || val === '') return false;
+  const str = String(val).trim().toUpperCase();
+  const norm = normalizeText(str);
+  return (
+    str === 'SI' ||
+    str === 'SÍ' ||
+    str === 'S' ||
+    str === 'A' ||
+    str === 'NO' ||
+    str === 'D' ||
+    str === 'N' ||
+    str === 'CORREGIR' ||
+    str === 'C' ||
+    str === 'POR CORREGIR' ||
+    str === '-' ||
+    str === 'NA' ||
+    str === 'N/A' ||
+    str === '1' ||
+    str === '0' ||
+    str === 'APROBADO' ||
+    str === 'APROBO' ||
+    str === 'NO APROBADO' ||
+    str === '✓' ||
+    str === '✔' ||
+    norm.includes('aprob') ||
+    norm.includes('correg') ||
+    norm.includes('entreg')
+  );
 }
 
 /**
@@ -210,6 +309,12 @@ export async function parseExcelMatrix(
   const detectedEvidenceColumns: ParsedExcelResult['detectedEvidenceColumns'] = [];
   const unmappedEvidenceColumns: string[] = [];
 
+  // Working copy of evidences so newly discovered evidences (e.g. #9 up to 30) can be added dynamically
+  const workingEvidences: EvidenceItem[] = currentEvidences.map((e) => ({ ...e }));
+
+  // Sample data rows for detecting columns with qualification status cells
+  const sampleDataRows = rawRows.slice(headerRowIndex + 1, headerRowIndex + 15);
+
   // Match columns
   headerRow.forEach((colVal, colIndex) => {
     const headerStr = String(colVal || '').trim();
@@ -220,7 +325,7 @@ export async function parseExcelMatrix(
       return;
     }
 
-    // Check Document
+    // 1. Check Document
     if (
       norm.includes('documento') ||
       norm.includes('cedula') ||
@@ -236,7 +341,7 @@ export async function parseExcelMatrix(
       return;
     }
 
-    // Check Name
+    // 2. Check Name
     if (
       norm.includes('nombre') ||
       norm.includes('aprendiz') ||
@@ -250,41 +355,127 @@ export async function parseExcelMatrix(
       return;
     }
 
-    // Check Email
+    // 3. Check Email
     if (norm.includes('correo') || norm.includes('email') || norm.includes('mail') || norm.includes('misena')) {
       columnMappings.push({ colIndex, headerName: headerStr, type: 'correo' });
       return;
     }
 
-    // Check Phone
+    // 4. Check Phone
     if (norm.includes('telefono') || norm.includes('celular') || norm.includes('tel') || norm.includes('movil') || norm.includes('phone')) {
       columnMappings.push({ colIndex, headerName: headerStr, type: 'telefono' });
       return;
     }
 
-    // Check Evidence column: match against currentEvidences
-    let matchedEvidence: EvidenceItem | undefined;
-
-    // Try by number: e.g. "#1 - ...", "#1", "1 - ...", "1. ...", "Evidencia 1", "E1", "EV01", or exact number
-    const numMatch =
-      headerStr.match(/^(?:#|\b)?\s*(\d+)\s*[-.:\)]/i) ||
-      headerStr.match(/(?:evidencia|evid|ev|e|#|\b)\s*(\d+)/i) ||
-      headerStr.match(/^(\d+)$/);
-
-    if (numMatch) {
-      const evNum = parseInt(numMatch[1], 10);
-      matchedEvidence = currentEvidences.find((e) => e.numero === evNum);
+    // 5. Check Non-Evidence Metadata / Totals / List index
+    if (
+      norm.includes('total') ||
+      norm.includes('presentada') ||
+      norm.includes('pendiente') ||
+      norm.includes('aprobada') ||
+      norm.includes('porcentaje') ||
+      norm === '%' ||
+      norm.includes('estado general') ||
+      norm.includes('resultado general') ||
+      norm.includes('juicio') ||
+      norm.includes('firma') ||
+      norm.includes('observacion') ||
+      norm.includes('observaciones') ||
+      norm.includes('no. de lista') ||
+      norm.includes('numero de lista') ||
+      norm.includes('n°') ||
+      norm === 'no.' ||
+      (colIndex === 0 && (norm === 'no' || norm === '#'))
+    ) {
+      columnMappings.push({ colIndex, headerName: headerStr, type: 'ignore' });
+      return;
     }
 
-    // Try by evidence name or code
+    // 6. Evidence Column Detection & Dynamic Creation (Recognizes up to 30+ Evidences)
+    let matchedEvidence: EvidenceItem | undefined;
+    let isNewEvidence = false;
+
+    // A. Check by numeric indicator in header (e.g. "#9 - ...", "Evidencia 9", "EV09", "9", "AA1-EV09")
+    const extractedNum = extractEvidenceNumberFromHeader(headerStr);
+    if (extractedNum !== null) {
+      matchedEvidence = workingEvidences.find((e) => e.numero === extractedNum);
+      if (!matchedEvidence) {
+        // Create new evidence for this number (e.g. 9, 10, ... up to 30)
+        const cleanName = cleanEvidenceNameFromHeader(headerStr, extractedNum);
+        const newEv: EvidenceItem = {
+          id: `ev-${extractedNum}`,
+          numero: extractedNum,
+          nombre: cleanName,
+          rap: extractedNum <= 15 ? 'RAP 1' : 'RAP 2',
+          defaultEstado: 'NO',
+          observacion: ''
+        };
+        workingEvidences.push(newEv);
+        matchedEvidence = newEv;
+        isNewEvidence = true;
+      }
+    }
+
+    // B. Check by evidence name or code against existing evidences
     if (!matchedEvidence) {
-      matchedEvidence = currentEvidences.find((e) => {
+      matchedEvidence = workingEvidences.find((e) => {
         const evNorm = normalizeText(e.nombre);
-        return norm.includes(evNorm) || evNorm.includes(norm);
+        return (evNorm.length > 5 && (norm.includes(evNorm) || evNorm.includes(norm)));
       });
     }
 
-    // Try by positional column order if headers say "Evidencia X"
+    // C. Check by keywords or if data cells predominantly contain qualification statuses
+    if (!matchedEvidence) {
+      const hasEvidenceKeywords =
+        norm.includes('evidencia') ||
+        norm.startsWith('ev') ||
+        norm.startsWith('aa') ||
+        norm.startsWith('rap') ||
+        norm.includes('taller') ||
+        norm.includes('informe') ||
+        norm.includes('guia') ||
+        norm.includes('foro') ||
+        norm.includes('cuestionario') ||
+        norm.includes('evaluacion') ||
+        norm.includes('actividad') ||
+        norm.includes('resultado');
+
+      let statusCellCount = 0;
+      let nonBlankCellCount = 0;
+      sampleDataRows.forEach((row) => {
+        const val = row?.[colIndex];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          nonBlankCellCount++;
+          if (isCellEvidenceStatus(val)) {
+            statusCellCount++;
+          }
+        }
+      });
+
+      const isStatusCol = nonBlankCellCount > 0 && statusCellCount / nonBlankCellCount >= 0.5;
+
+      if (hasEvidenceKeywords || isStatusCol) {
+        // Allocate next available evidence number (up to 30+)
+        const usedNums = new Set(workingEvidences.map((e) => e.numero));
+        let nextNum = 1;
+        while (usedNums.has(nextNum)) {
+          nextNum++;
+        }
+        const cleanName = cleanEvidenceNameFromHeader(headerStr, nextNum);
+        const newEv: EvidenceItem = {
+          id: `ev-${nextNum}`,
+          numero: nextNum,
+          nombre: cleanName,
+          rap: nextNum <= 15 ? 'RAP 1' : 'RAP 2',
+          defaultEstado: 'NO',
+          observacion: ''
+        };
+        workingEvidences.push(newEv);
+        matchedEvidence = newEv;
+        isNewEvidence = true;
+      }
+    }
+
     if (matchedEvidence) {
       columnMappings.push({
         colIndex,
@@ -298,28 +489,14 @@ export async function parseExcelMatrix(
         headerName: headerStr,
         evidenceId: matchedEvidence.id,
         evidenceNumero: matchedEvidence.numero,
-        evidenceNombre: matchedEvidence.nombre
+        evidenceNombre: matchedEvidence.nombre,
+        isNew: isNewEvidence
       });
       return;
     }
 
-    // If it looks like an evidence header but wasn't matched to existing evidences
-    if (
-      norm.includes('evidencia') ||
-      norm.startsWith('ev') ||
-      norm.startsWith('aa') ||
-      norm.startsWith('rap') ||
-      norm.includes('taller') ||
-      norm.includes('informe') ||
-      norm.includes('guia') ||
-      norm.includes('foro') ||
-      norm.includes('cuestionario')
-    ) {
-      unmappedEvidenceColumns.push(headerStr);
-      columnMappings.push({ colIndex, headerName: headerStr, type: 'ignore' });
-      return;
-    }
-
+    // Otherwise, mark as unmapped / ignored
+    unmappedEvidenceColumns.push(headerStr);
     columnMappings.push({ colIndex, headerName: headerStr, type: 'ignore' });
   });
 
@@ -435,6 +612,10 @@ export async function parseExcelMatrix(
     });
   }
 
+  // Sort all evidences by numero ascending (so #1, #2, ... #9, ... #30 are strictly ordered)
+  const finalAllEvidences = [...workingEvidences].sort((a, b) => a.numero - b.numero);
+  const newEvidencesCount = Math.max(0, finalAllEvidences.length - currentEvidences.length);
+
   return {
     fileName: file.name,
     sheetName,
@@ -442,12 +623,14 @@ export async function parseExcelMatrix(
     apprentices: parsedApprentices,
     columnMappings,
     detectedEvidenceColumns,
+    allEvidences: finalAllEvidences,
     unmappedEvidenceColumns,
     summary: {
       totalApprentices: parsedApprentices.length,
       matchedWithExisting: matchedWithExistingCount,
       newApprentices: newApprenticesCount,
-      evidencesUpdated: detectedEvidenceColumns.length
+      evidencesUpdated: detectedEvidenceColumns.length,
+      newEvidencesCreated: newEvidencesCount
     }
   };
 }

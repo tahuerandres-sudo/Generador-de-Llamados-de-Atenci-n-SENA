@@ -950,13 +950,19 @@ export const EvidenceMatrixView: React.FC<EvidenceMatrixViewProps> = ({
         result={excelResult}
         currentEvidences={evidences}
         existingApprentices={apprentices}
-        onConfirm={(updatedApps) => {
+        onConfirm={(updatedApps, updatedEvs) => {
           setApprentices(updatedApps);
+          if (updatedEvs && updatedEvs.length > 0) {
+            setEvidences(updatedEvs);
+          }
+          const evsAdded = updatedEvs ? Math.max(0, updatedEvs.length - evidences.length) : 0;
           setNotification({
             type: 'success',
-            text: `¡Se actualizaron exitosamente los estados de la matriz desde "${excelResult?.fileName}"!`
+            text: evsAdded > 0
+              ? `¡Se cargaron todos los datos correctamente y se incorporaron ${evsAdded} evidencias (total ${updatedEvs.length} evidencias, reconociendo hasta 30) desde "${excelResult?.fileName}"!`
+              : `¡Se actualizaron exitosamente los datos de todas las evidencias desde "${excelResult?.fileName}"!`
           });
-          setTimeout(() => setNotification(null), 4000);
+          setTimeout(() => setNotification(null), 5000);
         }}
       />
 

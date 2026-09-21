@@ -24,6 +24,7 @@ interface ExcelImportModalProps {
   existingApprentices: Apprentice[];
   onConfirm: (
     updatedApprentices: Apprentice[],
+    updatedEvidences: EvidenceItem[],
     mode: 'update_existing' | 'replace_all'
   ) => void;
 }
@@ -46,6 +47,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     sheetName,
     apprentices: parsedApps,
     detectedEvidenceColumns,
+    allEvidences,
     unmappedEvidenceColumns,
     summary
   } = result;
@@ -124,7 +126,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       }));
     }
 
-    onConfirm(finalApprentices, importMode);
+    const finalEvidences = allEvidences && allEvidences.length > 0 ? allEvidences : currentEvidences;
+
+    onConfirm(finalApprentices, finalEvidences, importMode);
     onClose();
   };
 
@@ -208,21 +212,48 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
             </div>
           </div>
 
+          {/* New Evidences Alert if detected */}
+          {summary.newEvidencesCreated > 0 && (
+            <div className="bg-emerald-50 border-2 border-emerald-600 p-3.5 flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-emerald-700 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-black uppercase text-emerald-950">
+                  ¡Se detectaron {summary.newEvidencesCreated} evidencias adicionales en el archivo Excel!
+                </div>
+                <div className="text-[11px] text-emerald-900 mt-0.5 leading-relaxed">
+                  La matriz ahora reconoce y cargará automáticamente los datos de todas las evidencias detectadas (soporte completo para hasta 30 evidencias, incluyendo evidencia #9 en adelante).
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Evidence Columns Found Badge List */}
           {detectedEvidenceColumns.length > 0 && (
-            <div className="bg-emerald-50 border-2 border-black p-3.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-black block mb-1.5 flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-700" />
-                Columnas de Evidencias Reconocidas en el Excel:
+            <div className="bg-emerald-50/50 border-2 border-black p-3.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-black mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+                  Columnas de Evidencias Reconocidas ({detectedEvidenceColumns.length} en total):
+                </span>
+                <span className="text-[9px] font-mono text-slate-600 font-bold">
+                  Soporta hasta 30 evidencias
+                </span>
               </span>
-              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
                 {detectedEvidenceColumns.map((col, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold bg-white text-black px-2 py-0.5 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
+                      col.isNew ? 'bg-amber-100 text-amber-950 border-amber-800' : 'bg-white text-black'
+                    }`}
                   >
-                    <span className="font-black font-mono text-emerald-700">#{col.evidenceNumero}</span>
+                    <span className="font-black font-mono text-emerald-800">#{col.evidenceNumero}</span>
                     <span className="truncate max-w-[150px]">{col.evidenceNombre}</span>
+                    {col.isNew && (
+                      <span className="ml-1 text-[8px] bg-emerald-700 text-white px-1 py-0 font-black">
+                        NUEVA
+                      </span>
+                    )}
                   </span>
                 ))}
               </div>

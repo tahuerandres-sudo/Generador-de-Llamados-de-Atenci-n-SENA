@@ -926,7 +926,7 @@ export async function exportActiveApprenticesPdf(
   const remainingForNamesAndEvidences = availableW - fixedWidths;
   
   const evCount = Math.max(1, evidences.length);
-  // Allocate balanced space to apprentice name and evidences
+  // Allocate balanced space to apprentice name and evidences (supports up to 30 evidences)
   let nameColW = 56;
   if (evCount <= 5) {
     nameColW = 66;
@@ -934,8 +934,12 @@ export async function exportActiveApprenticesPdf(
     nameColW = 58;
   } else if (evCount <= 12) {
     nameColW = 50;
+  } else if (evCount <= 18) {
+    nameColW = 42;
+  } else if (evCount <= 24) {
+    nameColW = 38;
   } else {
-    nameColW = 44;
+    nameColW = 34;
   }
 
   const remainingForEvidences = remainingForNamesAndEvidences - nameColW;
@@ -964,8 +968,8 @@ export async function exportActiveApprenticesPdf(
     tableWidth: availableW,
     theme: 'grid',
     styles: {
-      fontSize: isLargeTable ? 5.2 : 5.8,
-      cellPadding: 0.8,
+      fontSize: evCount > 22 ? 4.2 : (evCount > 15 ? 4.8 : (isLargeTable ? 5.2 : 5.8)),
+      cellPadding: evCount > 20 ? 0.35 : (evCount > 12 ? 0.5 : 0.8),
       lineColor: [0, 0, 0],
       lineWidth: 0.15,
       overflow: 'linebreak'

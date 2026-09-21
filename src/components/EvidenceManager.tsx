@@ -99,7 +99,7 @@ export const EvidenceManager: React.FC<EvidenceManagerProps> = ({
             Evidencias y Actividades del Llamado
           </h2>
           <p className="text-xs text-slate-600 mt-1 max-w-2xl font-medium">
-            Defina las evidencias pendientes o evaluadas. En el documento SENA, las filas 1 a 6 se ubican en la página 1 y las filas 7 a 19 en la página 2.
+            Defina las evidencias pendientes o evaluadas. En el documento SENA, las filas 1 a 6 se ubican en la página 1 y las filas 7 en adelante en la página 2 y reportes (soporta hasta 30 evidencias).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -132,7 +132,7 @@ export const EvidenceManager: React.FC<EvidenceManagerProps> = ({
               Listado de Evidencias ({evidences.length})
             </h3>
             <span className="text-[10px] font-mono font-bold bg-white border border-black px-2 py-0.5 text-slate-800">
-              Pág 1: Evidencias 1-6 | Pág 2: Evidencias 7-19
+              Pág 1: Evidencias 1-6 | Pág 2+: Evidencias 7 a 30
             </span>
           </div>
           {evidences.length > 0 && (

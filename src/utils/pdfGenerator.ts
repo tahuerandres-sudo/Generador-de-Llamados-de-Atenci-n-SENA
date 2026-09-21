@@ -356,7 +356,9 @@ function drawPage2(
   const colObs = contentWidth - colN - colEv - colSi - colNo; // ~57.9 mm
 
   const page2Evidences = allEvidences.slice(page1RowsCount);
-  const rowH = 6.8;
+  const rowH = page2Evidences.length > 18 ? 4.6 : (page2Evidences.length > 12 ? 5.2 : 6.8);
+  const textOffset = rowH < 5.5 ? 3.3 : 4.5;
+  const nameOffset = rowH < 5.5 ? 3.3 : 4.3;
 
   if (page2Evidences.length > 0) {
     drawEvidenceTableHeader(doc, left, currY, contentWidth, colN, colEv, colSi, colNo, colObs);
@@ -373,12 +375,12 @@ function drawPage2(
       doc.line(left + colN + colEv + colSi + colNo, currY, left + colN + colEv + colSi + colNo, currY + rowH);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.text(`${rowNum}`, left + colN / 2, currY + 4.5, { align: 'center' });
+      doc.setFontSize(rowH < 5.5 ? 6 : 7);
+      doc.text(`${rowNum}`, left + colN / 2, currY + textOffset, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.text(ev.nombre || '', left + colN + 2, currY + 4.3, {
+      doc.setFontSize(rowH < 5.5 ? 5.8 : 6.8);
+      doc.text(ev.nombre || '', left + colN + 2, currY + nameOffset, {
         maxWidth: colEv - 4,
         lineHeightFactor: 1.15
       });
@@ -386,26 +388,26 @@ function drawPage2(
       const appStatus = (apprentice.evidenciasStatus && apprentice.evidenciasStatus[ev.id]) || ev.defaultEstado || 'NO';
       if (appStatus === 'SI') {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.2);
-        doc.text('SI', left + colN + colEv + colSi / 2, currY + 4.5, { align: 'center' });
+        doc.setFontSize(rowH < 5.5 ? 6.5 : 7.2);
+        doc.text('SI', left + colN + colEv + colSi / 2, currY + textOffset, { align: 'center' });
       } else if (appStatus === 'CORREGIR') {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.2);
-        doc.text('CORR', left + colN + colEv + colSi + colNo / 2, currY + 4.5, { align: 'center' });
+        doc.setFontSize(rowH < 5.5 ? 5.5 : 6.2);
+        doc.text('CORR', left + colN + colEv + colSi + colNo / 2, currY + textOffset, { align: 'center' });
       } else if (appStatus === 'NO') {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.2);
-        doc.text('NO', left + colN + colEv + colSi + colNo / 2, currY + 4.5, { align: 'center' });
+        doc.setFontSize(rowH < 5.5 ? 6.5 : 7.2);
+        doc.text('NO', left + colN + colEv + colSi + colNo / 2, currY + textOffset, { align: 'center' });
       } else {
         doc.setFont('helvetica', 'normal');
-        doc.text('-', left + colN + colEv + colSi + colNo / 2, currY + 4.5, { align: 'center' });
+        doc.text('-', left + colN + colEv + colSi + colNo / 2, currY + textOffset, { align: 'center' });
       }
 
       const obs = ev.observacion || (appStatus === 'CORREGIR' ? 'Debe corregir y presentar ajustes' : '');
       if (obs) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6);
-        doc.text(obs, left + colN + colEv + colSi + colNo + 2, currY + 4.3, {
+        doc.setFontSize(rowH < 5.5 ? 5.2 : 6);
+        doc.text(obs, left + colN + colEv + colSi + colNo + 2, currY + nameOffset, {
           maxWidth: colObs - 4,
           lineHeightFactor: 1.15
         });
@@ -414,7 +416,7 @@ function drawPage2(
       currY += rowH;
     }
 
-    currY += 8;
+    currY += page2Evidences.length > 18 ? 4 : 8;
   }
 
   // -------------------------------------------------------------
