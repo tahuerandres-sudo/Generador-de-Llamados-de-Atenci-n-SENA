@@ -10,6 +10,8 @@ interface HeaderProps {
   apprenticesCount: number;
   evidencesCount: number;
   codigoFicha: string;
+  activeProgramId?: number;
+  activeProgramName?: string;
   onOpenBulkDownload: () => void;
 }
 
@@ -20,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   apprenticesCount,
   evidencesCount,
   codigoFicha,
+  activeProgramId,
+  activeProgramName,
   onOpenBulkDownload
 }) => {
   return (
@@ -36,11 +40,16 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 block">
                   Generador Administrativo Institucional
                 </span>
-                {codigoFicha && (
+                {activeProgramId && activeProgramName && (
+                  <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-black uppercase bg-black text-emerald-400 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                    P{activeProgramId}: {activeProgramName.toUpperCase()}
+                  </span>
+                )}
+                {!activeProgramId && codigoFicha && (
                   <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-black uppercase bg-emerald-400 text-black border border-black">
                     FICHA {codigoFicha}
                   </span>

@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { ActiveTab, Apprentice, EvidenceItem, GeneralInfo, SignatureConfig } from './types';
+import { ActiveTab, Apprentice, EvidenceItem, GeneralInfo, SignatureConfig, ProgramSlot } from './types';
 import {
   INITIAL_APPRENTICES,
   INITIAL_EVIDENCES,
   INITIAL_GENERAL_INFO,
   INITIAL_SIGNATURE_CONFIG
 } from './utils/sampleData';
+import { getDefaultPrograms } from './utils/defaultPrograms';
 import { Header } from './components/Header';
+import { ProgramSelectorBar } from './components/ProgramSelectorBar';
+import { CopyOptions } from './components/CopyProgramModal';
 import { GeneralInfoForm } from './components/GeneralInfoForm';
 import { EvidenceManager } from './components/EvidenceManager';
 import { EvidenceMatrixView } from './components/EvidenceMatrixView';
@@ -18,6 +21,8 @@ import { ActiveApprenticesSheetModal } from './components/ActiveApprenticesSheet
 import { RotateCcw } from 'lucide-react';
 
 const STORAGE_KEYS = {
+  PROGRAMS: 'sena_atencion_programs_v2',
+  ACTIVE_PROGRAM_ID: 'sena_atencion_active_program_id',
   GENERAL_INFO: 'sena_atencion_general_info',
   EVIDENCES: 'sena_atencion_evidences',
   APPRENTICES: 'sena_atencion_apprentices',
@@ -25,45 +30,63 @@ const STORAGE_KEYS = {
 };
 
 export default function App() {
-  // 1. State for General Info
-  const [generalInfo, setGeneralInfo] = useState<GeneralInfo>(() => {
+  // 1. Five Program Slots
+  const [programs, setPrograms] = useState<ProgramSlot[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.GENERAL_INFO);
-      return saved ? JSON.parse(saved) : INITIAL_GENERAL_INFO;
+      const saved = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 5) {
+          return parsed;
+        }
+      }
+    } catch {}
+
+    const defaults = getDefaultPrograms();
+    // Check if there was existing standalone data in localStorage for active program (P2)
+    try {
+      const savedGen = localStorage.getItem(STORAGE_KEYS.GENERAL_INFO);
+      const savedEv = localStorage.getItem(STORAGE_KEYS.EVIDENCES);
+      const savedApp = localStorage.getItem(STORAGE_KEYS.APPRENTICES);
+      const savedSig = localStorage.getItem(STORAGE_KEYS.SIGNATURE);
+
+      if (savedGen || savedEv || savedApp) {
+        return defaults.map((p) => {
+          if (p.id === 2) {
+            return {
+              ...p,
+              generalInfo: savedGen ? JSON.parse(savedGen) : p.generalInfo,
+              evidences: savedEv ? JSON.parse(savedEv) : p.evidences,
+              apprentices: savedApp ? JSON.parse(savedApp) : p.apprentices,
+              signatureConfig: savedSig ? JSON.parse(savedSig) : p.signatureConfig
+            };
+          }
+          return p;
+        });
+      }
+    } catch {}
+
+    return defaults;
+  });
+
+  // 2. Active Program ID (defaults to 2: Videojuegos y entornos interactivos)
+  const [activeProgramId, setActiveProgramId] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_PROGRAM_ID);
+      const num = saved ? Number(saved) : 2;
+      return num >= 1 && num <= 5 ? num : 2;
     } catch {
-      return INITIAL_GENERAL_INFO;
+      return 2;
     }
   });
 
-  // 2. State for Evidences List
-  const [evidences, setEvidences] = useState<EvidenceItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EVIDENCES);
-      return saved ? JSON.parse(saved) : INITIAL_EVIDENCES;
-    } catch {
-      return INITIAL_EVIDENCES;
-    }
-  });
+  const activeProgram = programs.find((p) => p.id === activeProgramId) || programs[1] || programs[0];
 
-  // 3. State for Apprentices
-  const [apprentices, setApprentices] = useState<Apprentice[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.APPRENTICES);
-      return saved ? JSON.parse(saved) : INITIAL_APPRENTICES;
-    } catch {
-      return INITIAL_APPRENTICES;
-    }
-  });
-
-  // 4. State for Signatures
-  const [signatureConfig, setSignatureConfig] = useState<SignatureConfig>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.SIGNATURE);
-      return saved ? JSON.parse(saved) : INITIAL_SIGNATURE_CONFIG;
-    } catch {
-      return INITIAL_SIGNATURE_CONFIG;
-    }
-  });
+  // 3. States for currently active program
+  const [generalInfo, setGeneralInfo] = useState<GeneralInfo>(() => activeProgram.generalInfo);
+  const [evidences, setEvidences] = useState<EvidenceItem[]>(() => activeProgram.evidences);
+  const [apprentices, setApprentices] = useState<Apprentice[]>(() => activeProgram.apprentices);
+  const [signatureConfig, setSignatureConfig] = useState<SignatureConfig>(() => activeProgram.signatureConfig);
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState<ActiveTab>('general');
@@ -72,30 +95,37 @@ export default function App() {
   const [isBulkDownloadOpen, setIsBulkDownloadOpen] = useState(false);
   const [isActiveSheetModalOpen, setIsActiveSheetModalOpen] = useState(false);
 
-  // Sync with Local Storage
+  // Automatically update the program slot in the programs array whenever active program data changes
+  useEffect(() => {
+    setPrograms((prev) =>
+      prev.map((p) => {
+        if (p.id === activeProgramId) {
+          return {
+            ...p,
+            name: generalInfo.programa || p.name,
+            codigoFicha: generalInfo.codigoFicha || p.codigoFicha,
+            generalInfo,
+            evidences,
+            apprentices,
+            signatureConfig
+          };
+        }
+        return p;
+      })
+    );
+  }, [generalInfo, evidences, apprentices, signatureConfig, activeProgramId]);
+
+  // Persist programs and active program id
   useEffect(() => {
     try {
+      localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(programs));
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_PROGRAM_ID, String(activeProgramId));
       localStorage.setItem(STORAGE_KEYS.GENERAL_INFO, JSON.stringify(generalInfo));
-    } catch {}
-  }, [generalInfo]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.EVIDENCES, JSON.stringify(evidences));
-    } catch {}
-  }, [evidences]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.APPRENTICES, JSON.stringify(apprentices));
-    } catch {}
-  }, [apprentices]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.SIGNATURE, JSON.stringify(signatureConfig));
     } catch {}
-  }, [signatureConfig]);
+  }, [programs, activeProgramId, generalInfo, evidences, apprentices, signatureConfig]);
 
   // Keep selected apprentice synced if list changes
   useEffect(() => {
@@ -103,16 +133,154 @@ export default function App() {
       if (!selectedApprentice || !apprentices.some((a) => a.id === selectedApprentice.id)) {
         setSelectedApprentice(apprentices[0]);
       }
+    } else {
+      setSelectedApprentice(null);
     }
   }, [apprentices, selectedApprentice]);
 
+  // Handle switching program slot
+  const handleSelectProgram = (newId: number) => {
+    if (newId === activeProgramId) return;
+
+    // Snapshot current active state into programs list
+    const updatedPrograms = programs.map((p) => {
+      if (p.id === activeProgramId) {
+        return {
+          ...p,
+          name: generalInfo.programa || p.name,
+          codigoFicha: generalInfo.codigoFicha || p.codigoFicha,
+          generalInfo,
+          evidences,
+          apprentices,
+          signatureConfig
+        };
+      }
+      return p;
+    });
+
+    const target = updatedPrograms.find((p) => p.id === newId);
+    if (!target) return;
+
+    setPrograms(updatedPrograms);
+    setActiveProgramId(newId);
+    setGeneralInfo(target.generalInfo);
+    setEvidences(target.evidences);
+    setApprentices(target.apprentices);
+    setSignatureConfig(target.signatureConfig);
+    setSelectedApprentice(target.apprentices[0] || null);
+  };
+
+  // Handle updating program name or ficha
+  const handleUpdateProgramMeta = (id: number, data: { name: string; codigoFicha: string }) => {
+    setPrograms((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          return {
+            ...p,
+            name: data.name,
+            codigoFicha: data.codigoFicha,
+            generalInfo: {
+              ...p.generalInfo,
+              programa: data.name,
+              codigoFicha: data.codigoFicha
+            }
+          };
+        }
+        return p;
+      })
+    );
+
+    if (id === activeProgramId) {
+      setGeneralInfo((prev) => ({
+        ...prev,
+        programa: data.name,
+        codigoFicha: data.codigoFicha
+      }));
+    }
+  };
+
+  // Handle resetting a program to defaults
+  const handleResetProgram = (id: number) => {
+    const defaults = getDefaultPrograms();
+    const targetDefault = defaults.find((p) => p.id === id);
+    if (!targetDefault) return;
+
+    setPrograms((prev) => prev.map((p) => (p.id === id ? { ...targetDefault } : p)));
+
+    if (id === activeProgramId) {
+      setGeneralInfo(targetDefault.generalInfo);
+      setEvidences(targetDefault.evidences);
+      setApprentices(targetDefault.apprentices);
+      setSignatureConfig(targetDefault.signatureConfig);
+      setSelectedApprentice(targetDefault.apprentices[0] || null);
+    }
+  };
+
+  // Handle copying data between programs
+  const handleCopyBetweenPrograms = (sourceId: number, targetId: number, options: CopyOptions) => {
+    const source = programs.find((p) => p.id === sourceId);
+    if (!source) return;
+
+    let updatedTargetSlot: ProgramSlot | null = null;
+
+    setPrograms((prev) => {
+      return prev.map((p) => {
+        if (p.id === targetId) {
+          const updatedGenInfo: GeneralInfo = options.copyGeneralInfo
+            ? {
+                ...source.generalInfo,
+                programa: p.name,
+                codigoFicha: p.codigoFicha
+              }
+            : p.generalInfo;
+
+          const updatedEvidences = options.copyEvidences
+            ? JSON.parse(JSON.stringify(source.evidences))
+            : p.evidences;
+
+          const updatedApprentices = options.copyApprentices
+            ? JSON.parse(JSON.stringify(source.apprentices))
+            : p.apprentices;
+
+          const updatedSignatures = options.copySignatures
+            ? JSON.parse(JSON.stringify(source.signatureConfig))
+            : p.signatureConfig;
+
+          const res: ProgramSlot = {
+            ...p,
+            generalInfo: updatedGenInfo,
+            evidences: updatedEvidences,
+            apprentices: updatedApprentices,
+            signatureConfig: updatedSignatures
+          };
+          updatedTargetSlot = res;
+          return res;
+        }
+        return p;
+      });
+    });
+
+    if (targetId === activeProgramId && updatedTargetSlot) {
+      const u = updatedTargetSlot as ProgramSlot;
+      setGeneralInfo(u.generalInfo);
+      setEvidences(u.evidences);
+      setApprentices(u.apprentices);
+      setSignatureConfig(u.signatureConfig);
+      setSelectedApprentice(u.apprentices[0] || null);
+    }
+  };
+
   const handleResetToDefaultSample = () => {
-    if (window.confirm('¿Desea restaurar los datos de ejemplo del formato SENA?')) {
-      setGeneralInfo(INITIAL_GENERAL_INFO);
-      setEvidences(INITIAL_EVIDENCES);
-      setApprentices(INITIAL_APPRENTICES);
-      setSignatureConfig(INITIAL_SIGNATURE_CONFIG);
-      setSelectedApprentice(INITIAL_APPRENTICES[0]);
+    if (window.confirm('¿Desea restaurar todos los 5 programas a sus datos de ejemplo del formato SENA?')) {
+      const defaults = getDefaultPrograms();
+      setPrograms(defaults);
+      setActiveProgramId(2);
+      const p2 = defaults.find((p) => p.id === 2) || defaults[0];
+      setGeneralInfo(p2.generalInfo);
+      setEvidences(p2.evidences);
+      setApprentices(p2.apprentices);
+      setSignatureConfig(p2.signatureConfig);
+      setSelectedApprentice(p2.apprentices[0] || null);
       localStorage.clear();
     }
   };
@@ -127,7 +295,19 @@ export default function App() {
         apprenticesCount={apprentices.length}
         evidencesCount={evidences.length}
         codigoFicha={generalInfo.codigoFicha}
+        activeProgramId={activeProgramId}
+        activeProgramName={activeProgram?.name || generalInfo.programa}
         onOpenBulkDownload={() => setIsBulkDownloadOpen(true)}
+      />
+
+      {/* Program Selector Bar (5 Programs) */}
+      <ProgramSelectorBar
+        programs={programs}
+        activeProgramId={activeProgramId}
+        onSelectProgram={handleSelectProgram}
+        onUpdateProgramMeta={handleUpdateProgramMeta}
+        onResetProgram={handleResetProgram}
+        onCopyBetweenPrograms={handleCopyBetweenPrograms}
       />
 
       {/* Main Content Area */}

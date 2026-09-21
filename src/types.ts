@@ -56,3 +56,13 @@ export interface SignatureConfig {
 
 export type ActiveTab = 'general' | 'evidencias' | 'matriz' | 'aprendices' | 'vista-previa';
 
+export interface ProgramSlot {
+  id: number;
+  name: string;
+  codigoFicha: string;
+  generalInfo: GeneralInfo;
+  evidences: EvidenceItem[];
+  apprentices: Apprentice[];
+  signatureConfig: SignatureConfig;
+}
+
